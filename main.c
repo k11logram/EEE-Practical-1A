@@ -59,7 +59,6 @@ uint16_t delay = 0;
 uint8_t isSeedGenerated = 0;
 uint8_t isAllOff = 0;
 uint8_t current_turned_OFF = 0;
-uint16_t heldDelay = 0;
 
 
 
@@ -106,14 +105,16 @@ int main(void)
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
   MX_TIM16_Init();
-  /* USER CODE BEGIN 2 */
+/* USER CODE BEGIN 2 */
 
-  // TODO: Start timer TIM16
-  HAL_TIM_Base_Start_IT(&htim16);
+// TODO: Start timer TIM16
+HAL_TIM_Base_Start_IT(&htim16);
 
- 
+// Seed the random number generator once at startup
+srand(HAL_GetTick());
+isSeedGenerated = 1;
 
-  /* USER CODE END 2 */
+/* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
@@ -338,12 +339,16 @@ static void MX_GPIO_Init(void)
 /* USER CODE BEGIN 4 */
 void TIM16_IRQHandler(void)
 {
-	// Acknowledge interrupt
-	HAL_TIM_IRQHandler(&htim16);
-	__HAL_TIM_CLEAR_IT(&htim16, TIM_IT_UPDATE);
+    static uint8_t pattern_initialized = 0; // I Declared it as static so it's accessible throughout the function
+    static uint16_t local_delay = 0;
+    static uint16_t delay_period = 100; // Default delay period in ms, can be adjusted
 
-	// TODO: Change LED pattern
-	if (HAL_GPIO_ReadPin(Button1_GPIO_Port, Button1_Pin) == GPIO_PIN_RESET) {
+  // Acknowledge interrupt
+  HAL_TIM_IRQHandler(&htim16);
+  __HAL_TIM_CLEAR_IT(&htim16, TIM_IT_UPDATE);
+
+  // TODO: Change LED pattern
+  if (HAL_GPIO_ReadPin(Button1_GPIO_Port, Button1_Pin) == GPIO_PIN_RESET) {
 
 		        HAL_GPIO_WritePin(LED0_GPIO_Port, LED0_Pin, GPIO_PIN_RESET);
 		        HAL_GPIO_WritePin(LED1_GPIO_Port, LED1_Pin, GPIO_PIN_RESET);
@@ -365,7 +370,7 @@ void TIM16_IRQHandler(void)
 		        	case 6: HAL_GPIO_WritePin(LED6_GPIO_Port, LED6_Pin, GPIO_PIN_SET); break;
 		        	case 7: HAL_GPIO_WritePin(LED7_GPIO_Port, LED7_Pin, GPIO_PIN_SET); break;
 		        }
-		        isSeedGenerated = 0;
+
 		        currentLED_ON_in_sequence_1 = (currentLED_ON_in_sequence_1 + 1) % 15;
 
     }
@@ -391,101 +396,83 @@ void TIM16_IRQHandler(void)
     		        	case 6: HAL_GPIO_WritePin(LED6_GPIO_Port, LED6_Pin, GPIO_PIN_RESET); break;
     		        	case 7: HAL_GPIO_WritePin(LED7_GPIO_Port, LED7_Pin, GPIO_PIN_RESET); break;
     		        }
-    		        isSeedGenerated = 0;
+
     		        currentLED_OFF_in_sequence_2 = (currentLED_OFF_in_sequence_2 + 1) % 15;
 
       }
-	  else if (HAL_GPIO_ReadPin(Button3_GPIO_Port, Button3_Pin) == GPIO_PIN_RESET) {
+  else if (HAL_GPIO_ReadPin(Button3_GPIO_Port, Button3_Pin) == GPIO_PIN_RESET) {
+      //static uint8_t pattern_initialized = 0;
+      //static uint16_t local_delay = 0;
 
-		  	  HAL_GPIO_WritePin(LED0_GPIO_Port, LED0_Pin, GPIO_PIN_RESET);
-			  HAL_GPIO_WritePin(LED1_GPIO_Port, LED1_Pin, GPIO_PIN_RESET);
-			  HAL_GPIO_WritePin(LED2_GPIO_Port, LED2_Pin, GPIO_PIN_RESET);
-			  HAL_GPIO_WritePin(LED3_GPIO_Port, LED3_Pin, GPIO_PIN_RESET);
-			  HAL_GPIO_WritePin(LED4_GPIO_Port, LED4_Pin, GPIO_PIN_RESET);
-			  HAL_GPIO_WritePin(LED5_GPIO_Port, LED5_Pin, GPIO_PIN_RESET);
-			  HAL_GPIO_WritePin(LED6_GPIO_Port, LED6_Pin, GPIO_PIN_RESET);
-			  HAL_GPIO_WritePin(LED7_GPIO_Port, LED7_Pin, GPIO_PIN_RESET);
+      // We generate a random 8-bit pattern to determine which LEDs will be turned on or off for the current sequence.
+      // This pattern is used to create a unique LED display each time Button3 is pressed.
+            if (!pattern_initialized) {
+                uint8_t pattern_bits = rand() % 256;
+                for (int i = 0; i < 8; i++) {
+                    patternMode3[i] = pattern_bits & 1;
+                    pattern_bits >>= 1;
+                }
+                // Turning on LEDs according to the pattern we have generated
+                if (patternMode3[0]) HAL_GPIO_WritePin(LED0_GPIO_Port, LED0_Pin, GPIO_PIN_SET);
+                if (patternMode3[1]) HAL_GPIO_WritePin(LED1_GPIO_Port, LED1_Pin, GPIO_PIN_SET);
+                if (patternMode3[2]) HAL_GPIO_WritePin(LED2_GPIO_Port, LED2_Pin, GPIO_PIN_SET);
+                if (patternMode3[3]) HAL_GPIO_WritePin(LED3_GPIO_Port, LED3_Pin, GPIO_PIN_SET);
+                if (patternMode3[4]) HAL_GPIO_WritePin(LED4_GPIO_Port, LED4_Pin, GPIO_PIN_SET);
+                if (patternMode3[5]) HAL_GPIO_WritePin(LED5_GPIO_Port, LED5_Pin, GPIO_PIN_SET);
+                if (patternMode3[6]) HAL_GPIO_WritePin(LED6_GPIO_Port, LED6_Pin, GPIO_PIN_SET);
+                if (patternMode3[7]) HAL_GPIO_WritePin(LED7_GPIO_Port, LED7_Pin, GPIO_PIN_SET);
+      
+                pattern_initialized = 1;
+                current_turned_OFF = 0;
+                isAllOff = 0;
+                local_delay = 0;
+            }
 
-			  current_LEDS_ON_in_sequence_3 = (230);
+      local_delay++;
+      if (local_delay >= delay_period) { // delay_period ms period
+          local_delay = 0;
 
+          if (!isAllOff) {
+              // Switching off these LEDs one by one
+              if (patternMode3[current_turned_OFF]) {
+                  switch (current_turned_OFF) {
+                      case 0: HAL_GPIO_WritePin(LED0_GPIO_Port, LED0_Pin, GPIO_PIN_RESET); break;
+                      case 1: HAL_GPIO_WritePin(LED1_GPIO_Port, LED1_Pin, GPIO_PIN_RESET); break;
+                      case 2: HAL_GPIO_WritePin(LED2_GPIO_Port, LED2_Pin, GPIO_PIN_RESET); break;
+                      case 3: HAL_GPIO_WritePin(LED3_GPIO_Port, LED3_Pin, GPIO_PIN_RESET); break;
+                      case 4: HAL_GPIO_WritePin(LED4_GPIO_Port, LED4_Pin, GPIO_PIN_RESET); break;
+                      case 5: HAL_GPIO_WritePin(LED5_GPIO_Port, LED5_Pin, GPIO_PIN_RESET); break;
+                      case 6: HAL_GPIO_WritePin(LED6_GPIO_Port, LED6_Pin, GPIO_PIN_RESET); break;
+                      case 7: HAL_GPIO_WritePin(LED7_GPIO_Port, LED7_Pin, GPIO_PIN_RESET); break;
+                  }
+              }
+              current_turned_OFF++;
+              if (current_turned_OFF >= 8) {
+                  current_turned_OFF = 0;
+                  isAllOff = 1;
+              }
+          } else {
+              // When all LEDs are OFF, then turn them all ON at once according to pattern
+              if (patternMode3[0]) HAL_GPIO_WritePin(LED0_GPIO_Port, LED0_Pin, GPIO_PIN_SET);
+              if (patternMode3[1]) HAL_GPIO_WritePin(LED1_GPIO_Port, LED1_Pin, GPIO_PIN_SET);
+              if (patternMode3[2]) HAL_GPIO_WritePin(LED2_GPIO_Port, LED2_Pin, GPIO_PIN_SET);
+              if (patternMode3[3]) HAL_GPIO_WritePin(LED3_GPIO_Port, LED3_Pin, GPIO_PIN_SET);
+              if (patternMode3[4]) HAL_GPIO_WritePin(LED4_GPIO_Port, LED4_Pin, GPIO_PIN_SET);
+              if (patternMode3[5]) HAL_GPIO_WritePin(LED5_GPIO_Port, LED5_Pin, GPIO_PIN_SET);
+              if (patternMode3[6]) HAL_GPIO_WritePin(LED6_GPIO_Port, LED6_Pin, GPIO_PIN_SET);
+              if (patternMode3[7]) HAL_GPIO_WritePin(LED7_GPIO_Port, LED7_Pin, GPIO_PIN_SET);
 
-			  patternMode3[7] = current_LEDS_ON_in_sequence_3 & 1; current_LEDS_ON_in_sequence_3 >>= 1;
-			  patternMode3[6] = current_LEDS_ON_in_sequence_3 & 1; current_LEDS_ON_in_sequence_3 >>= 1;
-			  patternMode3[5] = current_LEDS_ON_in_sequence_3 & 1; current_LEDS_ON_in_sequence_3 >>= 1;
-			  patternMode3[4] = current_LEDS_ON_in_sequence_3 & 1; current_LEDS_ON_in_sequence_3 >>= 1;
-			  patternMode3[3] = current_LEDS_ON_in_sequence_3 & 1; current_LEDS_ON_in_sequence_3 >>= 1;
-			  patternMode3[2] = current_LEDS_ON_in_sequence_3 & 1; current_LEDS_ON_in_sequence_3 >>= 1;
-			  patternMode3[1] = current_LEDS_ON_in_sequence_3 & 1; current_LEDS_ON_in_sequence_3 >>= 1;
-			  patternMode3[0] = current_LEDS_ON_in_sequence_3 & 1; current_LEDS_ON_in_sequence_3 >>= 1;
-
-			  uint32_t start_time = HAL_GetTick();  // Get the current tick count
-
-
-			  if (patternMode3[0] == 1) HAL_GPIO_WritePin(LED0_GPIO_Port, LED0_Pin, GPIO_PIN_SET);
-			  if (patternMode3[1] == 1) HAL_GPIO_WritePin(LED1_GPIO_Port, LED1_Pin, GPIO_PIN_SET);
-			  if (patternMode3[2] == 1) HAL_GPIO_WritePin(LED2_GPIO_Port, LED2_Pin, GPIO_PIN_SET);
-			  if (patternMode3[3] == 1) HAL_GPIO_WritePin(LED3_GPIO_Port, LED3_Pin, GPIO_PIN_SET);
-			  if (patternMode3[4] == 1) HAL_GPIO_WritePin(LED4_GPIO_Port, LED4_Pin, GPIO_PIN_SET);
-			  if (patternMode3[5] == 1) HAL_GPIO_WritePin(LED5_GPIO_Port, LED5_Pin, GPIO_PIN_SET);
-			  if (patternMode3[6] == 1) HAL_GPIO_WritePin(LED6_GPIO_Port, LED6_Pin, GPIO_PIN_SET);
-			  if (patternMode3[7] == 1) HAL_GPIO_WritePin(LED7_GPIO_Port, LED7_Pin, GPIO_PIN_SET);
-//
-//			  if (!isSeedGenerated) {
-//				  srand(HAL_GetTick());
-//				  isSeedGenerated = 1;
-//				  current_LEDS_ON_in_sequence_3 = (rand() % 255) + 1;
-//				  heldDelay = 100 + (rand() % (1500 - 100 + 1));
-//
-//			  }
-//
-//			  //current_LEDS_ON_in_sequence_3 = (rand() % 255) + 1;
-//			  //uint16_t heldDelay = 100 + (rand() % (1500 - 100 + 1));
-
-//
-//
-			  while ((HAL_GetTick() - start_time) < 1000) {
-			         // Wait for 1 second (1000 milliseconds)
-			     }
-
-
-			   HAL_GPIO_WritePin(LED7_GPIO_Port, LED7_Pin, GPIO_PIN_SET);
-			   if (current_turned_OFF == 1 && patternMode3[1] == 1) HAL_GPIO_WritePin(LED1_GPIO_Port, LED1_Pin, GPIO_PIN_RESET);
-
-//				  if(!isAllOff){
-//					  if (current_turned_OFF == 0 && patternMode3[0] == 1) HAL_GPIO_WritePin(LED0_GPIO_Port, LED0_Pin, GPIO_PIN_RESET);
-//					  if (current_turned_OFF == 1 && patternMode3[1] == 1) HAL_GPIO_WritePin(LED1_GPIO_Port, LED1_Pin, GPIO_PIN_RESET);
-//					  if (current_turned_OFF == 2 && patternMode3[2] == 1) HAL_GPIO_WritePin(LED2_GPIO_Port, LED2_Pin, GPIO_PIN_RESET);
-//					  if (current_turned_OFF == 3 && patternMode3[3] == 1) HAL_GPIO_WritePin(LED3_GPIO_Port, LED3_Pin, GPIO_PIN_RESET);
-//					  if (current_turned_OFF == 4 && patternMode3[4] == 1) HAL_GPIO_WritePin(LED4_GPIO_Port, LED4_Pin, GPIO_PIN_RESET);
-//					  if (current_turned_OFF == 5 && patternMode3[5] == 1) HAL_GPIO_WritePin(LED5_GPIO_Port, LED5_Pin, GPIO_PIN_RESET);
-//					  if (current_turned_OFF == 6 && patternMode3[6] == 1) HAL_GPIO_WritePin(LED6_GPIO_Port, LED6_Pin, GPIO_PIN_RESET);
-//					  if (current_turned_OFF == 7 && patternMode3[7] == 1) HAL_GPIO_WritePin(LED7_GPIO_Port, LED7_Pin, GPIO_PIN_RESET);
-//
-//					  current_turned_OFF++;
-//					  if (current_turned_OFF >= 8) {
-//						  current_turned_OFF = 0;
-//						  isAllOff = 1;
-//					  }
-//			      }
-//				  else if(isAllOff){
-//					  if (current_turned_OFF == 0 && patternMode3[0] == 1) HAL_GPIO_WritePin(LED0_GPIO_Port, LED0_Pin, GPIO_PIN_SET);
-//			          if (current_turned_OFF == 1 && patternMode3[1] == 1) HAL_GPIO_WritePin(LED1_GPIO_Port, LED1_Pin, GPIO_PIN_SET);
-//			          if (current_turned_OFF == 2 && patternMode3[2] == 1) HAL_GPIO_WritePin(LED2_GPIO_Port, LED2_Pin, GPIO_PIN_SET);
-//				      if (current_turned_OFF == 3 && patternMode3[3] == 1) HAL_GPIO_WritePin(LED3_GPIO_Port, LED3_Pin, GPIO_PIN_SET);
-//				      if (current_turned_OFF == 4 && patternMode3[4] == 1) HAL_GPIO_WritePin(LED4_GPIO_Port, LED4_Pin, GPIO_PIN_SET);
-//					  if (current_turned_OFF == 5 && patternMode3[5] == 1) HAL_GPIO_WritePin(LED5_GPIO_Port, LED5_Pin, GPIO_PIN_SET);
-//					  if (current_turned_OFF == 6 && patternMode3[6] == 1) HAL_GPIO_WritePin(LED6_GPIO_Port, LED6_Pin, GPIO_PIN_SET);
-//					  if (current_turned_OFF == 7 && patternMode3[7] == 1) HAL_GPIO_WritePin(LED7_GPIO_Port, LED7_Pin, GPIO_PIN_SET);
-//
-//					  current_turned_OFF++;
-//				      if (current_turned_OFF >= 8) {
-//				    	  current_turned_OFF = 0;
-//					  	  isAllOff = 0;
-//					  }
-//				  }
-//
-//			  }*/
-	  }
+              isAllOff = 0;
+              current_turned_OFF = 0;
+          }
+      }
+   else {
+      // Reset state if Button3 is released
+      pattern_initialized = 0;
+      current_turned_OFF = 0;
+      isAllOff = 0;
+  }
+}
 	   else if ((HAL_GPIO_ReadPin(Button1_GPIO_Port, Button1_Pin) == GPIO_PIN_SET)
 			 && (HAL_GPIO_ReadPin(Button2_GPIO_Port, Button2_Pin) == GPIO_PIN_SET)
 			 && (HAL_GPIO_ReadPin(Button3_GPIO_Port, Button3_Pin) == GPIO_PIN_SET)
